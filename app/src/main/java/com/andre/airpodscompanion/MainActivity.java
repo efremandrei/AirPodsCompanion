@@ -136,6 +136,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AppUpdateChecker.checkDaily(this);
         preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
         darkMode = preferences.getBoolean(PREF_DARK, true);
         autoPauseEnabled = preferences.getBoolean(PREF_AUTO_PAUSE, false);
@@ -719,16 +720,21 @@ public class MainActivity extends Activity {
     }
 
     private AirPodsBatteryStore.Snapshot parseAirPodsManufacturerData(String name, byte[] data) {
-        if (data == null || data.length < 9) {
+        if (data == null || data.length < 11) {
             return null;
         }
-        for (int offset = 0; offset <= data.length - 9; offset++) {
-            if ((data[offset] & 0xFF) == 0x07 && (data[offset + 1] & 0xFF) == 0x19) {
-                int status = data[offset + 3] & 0xFF;
-                int podBattery = data[offset + 4] & 0xFF;
-                int flagsAndCase = data[offset + 5] & 0xFF;
-                int lidRaw = data[offset + 6] & 0xFF;
-                int modelCode = ((data[offset + 1] & 0xFF) << 8) | (data[offset + 2] & 0xFF);
+        for (int offset = 0; offset <= data.length - 11; offset++) {
+            if ((data[offset] & 0xFF) == 0x07) {
+                int payloadLength = data[offset + 1] & 0xFF;
+                int publicStart = offset + 2;
+                if (payloadLength < 9 || (data[publicStart] & 0xFF) != 0x01) {
+                    continue;
+                }
+                int modelCode = ((data[publicStart + 1] & 0xFF) << 8) | (data[publicStart + 2] & 0xFF);
+                int status = data[publicStart + 3] & 0xFF;
+                int podBattery = data[publicStart + 4] & 0xFF;
+                int flagsAndCase = data[publicStart + 5] & 0xFF;
+                int lidRaw = data[publicStart + 6] & 0xFF;
 
                 boolean valuesFlipped = !bit(status, 5);
                 boolean thisPodInCase = bit(status, 6);
