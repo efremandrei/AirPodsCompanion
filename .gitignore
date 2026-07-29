@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+artifacts/*
+!artifacts/AirPodsCompanion-1.0.3-build4-arm64-v8a-debug.apk
