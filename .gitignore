@@ -5,4 +5,4 @@ local.properties
 *.iml
 .codex-remote-attachments/
 artifacts/*
-!artifacts/AirPodsCompanion-1.0.5-build6-arm64-v8a-debug.apk
+!artifacts/AirPodsCompanion-1.0.6-build7-arm64-v8a-debug.apk

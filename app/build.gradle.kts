@@ -23,8 +23,8 @@ android {
         applicationId = "com.andre.airpodscompanion"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.0.6"
     }
 
     compileOptions {
@@ -46,5 +46,5 @@ tasks.register<Copy>("copySamsungDebugApk") {
     dependsOn("assembleDebug")
     from(layout.buildDirectory.file("outputs/apk/debug/app-arm64-v8a-debug.apk"))
     into(rootProject.layout.projectDirectory.dir("artifacts"))
-    rename { "AirPodsCompanion-1.0.5-build6-arm64-v8a-debug.apk" }
+    rename { "AirPodsCompanion-1.0.6-build7-arm64-v8a-debug.apk" }
 }

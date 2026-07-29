@@ -378,12 +378,9 @@ public class MainActivity extends Activity {
 
         List<BluetoothDevice> bonded = getBondedDevicesSafely();
         List<BluetoothDevice> airPods = new ArrayList<>();
-        List<BluetoothDevice> others = new ArrayList<>();
         for (BluetoothDevice device : bonded) {
             if (isAppleEarbud(deviceName(device))) {
                 airPods.add(device);
-            } else {
-                others.add(device);
             }
         }
 
@@ -432,20 +429,17 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (airPods.isEmpty() && others.isEmpty()) {
-            deviceList.addView(emptyPanel("No paired Bluetooth devices are visible to this app."));
+        if (airPods.isEmpty()) {
+            deviceList.addView(emptyPanel("No paired Apple earphones or headphones are visible to this app."));
             return;
         }
 
         for (BluetoothDevice device : airPods) {
-            deviceList.addView(deviceRow(device, true), blockMargins());
-        }
-        for (BluetoothDevice device : others) {
-            deviceList.addView(deviceRow(device, false), blockMargins());
+            deviceList.addView(deviceRow(device), blockMargins());
         }
     }
 
-    private LinearLayout deviceRow(BluetoothDevice device, boolean likelyAirPods) {
+    private LinearLayout deviceRow(BluetoothDevice device) {
         LinearLayout row = panel();
         row.setPadding(dp(16), dp(14), dp(16), dp(14));
 
@@ -459,9 +453,7 @@ public class MainActivity extends Activity {
         status.setPadding(0, dp(5), 0, 0);
         row.addView(status);
 
-        String detail = likelyAirPods
-                ? "Likely Apple earbuds. Battery may show as unknown unless Android receives a battery event from the buds."
-                : "Other paired Bluetooth device. Kept visible so you can compare routing state.";
+        String detail = "Apple earphones/headphones only. Battery may show as unknown unless Android receives a battery event from the device.";
         TextView extra = label(detail, 13, Typeface.NORMAL, muted);
         extra.setPadding(0, dp(6), 0, 0);
         row.addView(extra);
