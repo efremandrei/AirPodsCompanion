@@ -10,12 +10,21 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("C:/Users/andre/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.andre.airpodscompanion"
         minSdk = 23
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
     }
 
     compileOptions {
@@ -37,5 +46,5 @@ tasks.register<Copy>("copySamsungDebugApk") {
     dependsOn("assembleDebug")
     from(layout.buildDirectory.file("outputs/apk/debug/app-arm64-v8a-debug.apk"))
     into(rootProject.layout.projectDirectory.dir("artifacts"))
-    rename { "AirPodsCompanion-1.0.4-build5-arm64-v8a-debug.apk" }
+    rename { "AirPodsCompanion-1.0.5-build6-arm64-v8a-debug.apk" }
 }

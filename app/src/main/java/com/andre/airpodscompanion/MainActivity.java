@@ -631,8 +631,7 @@ public class MainActivity extends Activity {
 
     @SuppressLint("MissingPermission")
     private void startAirPodsBatteryScanIfPossible() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                || !hasBluetoothScanPermission()
+        if (!hasBluetoothScanPermission()
                 || bluetoothAdapter == null
                 || !bluetoothAdapter.isEnabled()) {
             AirPodsBatteryStore.updateWidgets(this);
@@ -1019,8 +1018,11 @@ public class MainActivity extends Activity {
     }
 
     private boolean hasBluetoothScanPermission() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                && checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+        }
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestBluetoothConnectIfNeeded() {
@@ -1033,6 +1035,8 @@ public class MainActivity extends Activity {
                     },
                     REQUEST_BLUETOOTH_CONNECT
             );
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !hasBluetoothScanPermission()) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_BLUETOOTH_CONNECT);
         }
     }
 
