@@ -23,9 +23,19 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 - Status is grouped into scan-friendly sections: overall state, profile state, audio state, devices, and checklist.
 - Device rows prioritize likely Apple earbuds by names such as AirPods, Beats, Powerbeats, or Beats Fit.
 - Widget values are saved locally so the widget can keep showing the most recent known battery state.
+- The widget uses a compact graphic panel for left earbud, right earbud, and case charge state.
 - The auto-pause switch is off by default because AirPods BLE ear-state can vary by model and firmware.
 - The case-open popup is local to the running app; background popups would require a foreground scanning service.
 - The launcher icon uses a dark AirPods-style mark with a green status accent.
+
+## How to use
+
+1. Install the APK on the Android phone.
+2. Pair the AirPods in Android Bluetooth settings.
+3. Open AirPods Companion and allow the Nearby devices/Bluetooth permission when Android asks.
+4. Open the AirPods case near the phone and keep the app open for a few seconds so Android can deliver Bluetooth battery or AirPods BLE data.
+5. Add the home-screen widget: long-press the home screen, choose Widgets, pick AirPods Companion, then place the AirPods battery widget.
+6. Tap the widget to open the app and refresh scanning when values are missing or stale.
 
 ## Android and AirPods limits
 
@@ -50,14 +60,14 @@ Reverse-engineering references used for the current BLE feature set:
 The named APK is written to:
 
 ```text
-artifacts/AirPodsCompanion-1.0.6-build7-arm64-v8a-debug.apk
+artifacts/AirPodsCompanion-1.0.24-build25-arm64-v8a-debug.apk
 ```
 
 ## App Identity
 
 - Package: `com.andre.airpodscompanion`
-- Version: `1.0.6`
-- Build: `7`
+- Version: `1.0.24`
+- Build: `25`
 - Developer: Andrei Efremuahkin
 - Email: `andrei.efr@gmail.com`
 - Repo URL used in About: `https://github.com/efremandrei/AirPodsCompanion`
