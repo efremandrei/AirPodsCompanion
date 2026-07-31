@@ -1,6 +1,5 @@
 package com.andre.airpodscompanion;
 
-import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Notification;
@@ -157,7 +156,7 @@ public final class AppUpdateChecker {
     private static int currentVersionCode() {
         try {
             PackageInfo info = appContext().getPackageManager().getPackageInfo(appContext().getPackageName(), 0);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= 28) {
                 return (int) info.getLongVersionCode();
             }
             return info.versionCode;
@@ -234,8 +233,8 @@ public final class AppUpdateChecker {
         if (manager == null) {
             return;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
             return;
         }
         String channelId = "app_updates";
