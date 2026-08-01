@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -32,7 +33,7 @@ public final class AppUpdateChecker {
     private static final String TAG = "AppUpdateChecker";
     private static final String PREFS = "app_update_checker";
     private static final String LAST_CHECK = "last_check_millis";
-    private static final long ONE_DAY_MILLIS = 24L * 60L * 60L * 1000L;
+    private static final long ONE_WEEK_MILLIS = 7L * 24L * 60L * 60L * 1000L;
     private static final String RELEASES_API_URL = "https://api.github.com/repos/efremandrei/AirPodsCompanion/releases/latest";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -59,6 +60,24 @@ public final class AppUpdateChecker {
         });
     }
 
+    public static void checkNow(Activity activity) {
+        Context appContext = activity.getApplicationContext();
+        AppContextHolder.context = appContext;
+        markChecked(appContext);
+        EXECUTOR.execute(() -> {
+            UpdateInfo update = findUpdate();
+            activity.runOnUiThread(() -> {
+                if (activity.isFinishing() || activity.isDestroyed()) {
+                    return;
+                }
+                if (update != null) {
+                    showDialog(activity, update);
+                } else {
+                    Toast.makeText(activity, "No updates found", Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
+    }
     public static void checkFromBoot(Context context) {
         Context appContext = context.getApplicationContext();
         AppContextHolder.context = appContext;
@@ -76,7 +95,7 @@ public final class AppUpdateChecker {
 
     private static boolean shouldCheck(Context context) {
         long lastCheck = prefs(context).getLong(LAST_CHECK, 0L);
-        return System.currentTimeMillis() - lastCheck >= ONE_DAY_MILLIS;
+        return System.currentTimeMillis() - lastCheck >= ONE_WEEK_MILLIS;
     }
 
     private static void markChecked(Context context) {

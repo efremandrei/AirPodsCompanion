@@ -34,7 +34,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.SpannableString;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -1319,11 +1322,19 @@ public class MainActivity extends Activity {
                 + "Email: andrei.efr@gmail.com\n"
                 + "GitHub: " + REPO_URL + "\n"
                 + version;
-        new AlertDialog.Builder(this)
+        SpannableString linkedMessage = new SpannableString(message);
+        Linkify.addLinks(linkedMessage, Linkify.EMAIL_ADDRESSES | Linkify.WEB_URLS);
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("About AirPods Companion")
-                .setMessage(message)
+                .setMessage(linkedMessage)
+                .setNeutralButton("Check for updates", (dialogInterface, which) -> AppUpdateChecker.checkNow(this))
                 .setPositiveButton("OK", null)
                 .show();
+        TextView messageView = dialog.findViewById(android.R.id.message);
+        if (messageView != null) {
+            messageView.setMovementMethod(LinkMovementMethod.getInstance());
+            messageView.setLinksClickable(true);
+        }
     }
 
     private TextView label(String value, int sp, int style, int color) {
