@@ -55,33 +55,27 @@ jobs:
             gradle --no-daemon assembleDebug
           fi
 
-      - name: Read app version
+      - name: Read built APK version
         shell: bash
         run: |
           python3 - <<'PY' >> "$GITHUB_ENV"
-          import os
+          import json
           import re
           from pathlib import Path
 
-          version_name = ""
-          for gradle_file in (Path("app/build.gradle"), Path("app/build.gradle.kts")):
-              if not gradle_file.exists():
-                  continue
-
-              match = re.search(
-                  r'^\s*versionName\s*(?:=|\s)\s*["\']?([^"\'\s]+)',
-                  gradle_file.read_text(encoding="utf-8", errors="ignore"),
-                  re.MULTILINE,
-              )
-              if match:
-                  version_name = match.group(1)
-                  break
-
-          if not version_name:
-              version_name = f"0.0.{os.environ['GITHUB_RUN_NUMBER']}"
-
+          metadata = json.loads(Path("app/build/outputs/apk/debug/output-metadata.json").read_text(encoding="utf-8"))
+          outputs = metadata["elements"]
+          versions = {(item["versionName"], item["versionCode"]) for item in outputs}
+          if len(versions) != 1:
+              raise SystemExit("Expected one app version across the built APK outputs")
+          version_name, version_code = versions.pop()
+          if not version_name or not isinstance(version_code, int) or version_code < 1:
+              raise SystemExit("Missing APK versionName or versionCode")
           safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version_name).strip("-")
-          print(f"APP_VERSION={safe_version or '0.0.' + os.environ['GITHUB_RUN_NUMBER']}")
+          if not safe_version:
+              raise SystemExit("APK versionName contains no filename-safe characters")
+          print(f"APP_VERSION={safe_version}")
+          print(f"APP_BUILD={version_code}")
           PY
 
       - name: Prepare versioned downloadable APK
@@ -97,7 +91,7 @@ jobs:
             exit 1
           fi
 
-          versioned_apk="release/${repo_name}-v${APP_VERSION}-debug.apk"
+          versioned_apk="release/${repo_name}-v${APP_VERSION}-build-${APP_BUILD}-arm64-v8a-debug.apk"
           cp "$apk_path" "$versioned_apk"
 
           echo "APK_PATH=$versioned_apk" >> "$GITHUB_ENV"
@@ -106,12 +100,12 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: debug-v${{ env.APP_VERSION }}
-          name: Debug APK v${{ env.APP_VERSION }}
+          name: CI Debug APK v${{ env.APP_VERSION }} build ${{ env.APP_BUILD }}
           body: |
             Automatically built debug APK from the latest default-branch commit.
 
-            APK file name includes the app version number.
+            APK file name includes the version and build number read from the built APK metadata.
           artifacts: ${{ env.APK_PATH }}
           allowUpdates: true
           replacesArtifacts: true
-          makeLatest: true
+          makeLatest: false
