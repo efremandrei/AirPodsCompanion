@@ -740,14 +740,16 @@ public class MainActivity extends Activity {
             int caseBattery = extraBattery(intent, "case");
             boolean hasSplit = left >= 0 || right >= 0 || caseBattery >= 0;
             AirPodsBatteryStore.Snapshot previous = AirPodsBatteryStore.read(this);
-            if (!isAppleEarbud(name) && !hasSplit) {
+            boolean knownAirPodsName = name.equalsIgnoreCase(previous.deviceName)
+                    && previous.source.contains("BLE");
+            if (!isAppleEarbud(name) && !knownAirPodsName && !hasSplit) {
                 return;
             }
             if (left < 0) left = previous.left;
             if (right < 0) right = previous.right;
             if (caseBattery < 0) caseBattery = previous.caseBattery;
             AirPodsBatteryStore.write(this, new AirPodsBatteryStore.Snapshot(
-                    isAppleEarbud(name) ? name : previous.deviceName,
+                    isAppleEarbud(name) || knownAirPodsName ? name : previous.deviceName,
                     left,
                     right,
                     caseBattery,
