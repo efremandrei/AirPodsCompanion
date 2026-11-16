@@ -663,7 +663,8 @@ public class MainActivity extends Activity {
         if (snapshot.updatedAt > 0
                 && (snapshot.left >= 0 || snapshot.right >= 0 || snapshot.caseBattery >= 0)) {
             String time = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt));
-            lines.add("AirPods per-part data: " + time
+            String source = snapshot.source.contains("BLE") ? "AirPods BLE" : "Separate Android battery";
+            lines.add(source + " data: " + time
                     + (now - snapshot.updatedAt > 120000L ? " (may be stale)" : ""));
         }
         if (snapshot.combined >= 0 && snapshot.combinedUpdatedAt > 0) {
@@ -682,10 +683,13 @@ public class MainActivity extends Activity {
             return;
         }
         AirPodsBatteryStore.Snapshot snapshot = AirPodsBatteryStore.read(this);
-        widgetBatteryStatus.setText(snapshot.detailText().replace("Left ", "Left earbud: ")
+        String batteryText = snapshot.detailText().replace("Left ", "Left earbud: ")
                 .replace(" · Right ", "\nRight earbud: ")
-                .replace(" · Case ", "\nCase: ")
-                + "\n" + batteryFreshnessText(snapshot));
+                .replace(" · Case ", "\nCase: ");
+        if ("Android battery extras".equals(snapshot.source) && !TextUtils.isEmpty(snapshot.note)) {
+            batteryText += "\n" + snapshot.note;
+        }
+        widgetBatteryStatus.setText(batteryText + "\n" + batteryFreshnessText(snapshot));
         if (experimentalStatus != null) {
             String wear = snapshot.stateText().replace("Ear ", "")
                     .replace("L in", "Left ear in").replace("L out", "Left ear out").replace("L ?", "Left ear unknown")
