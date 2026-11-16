@@ -1617,20 +1617,30 @@ public class MainActivity extends Activity {
             super.onDraw(canvas);
             AirPodsBatteryStore.Snapshot snapshot = AirPodsBatteryStore.read(context);
             SharedPreferences prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+            boolean partsFresh = snapshot.updatedAt > 0
+                    && System.currentTimeMillis() - snapshot.updatedAt <= 2L * 60L * 1000L;
+            int leftBattery = partsFresh ? snapshot.left : -1;
+            int rightBattery = partsFresh ? snapshot.right : -1;
+            int caseBattery = partsFresh ? snapshot.caseBattery : -1;
 
             float width = getWidth();
             float top = dp(6);
             float midX = width / 2f;
             float bob = (float) Math.sin(phase * Math.PI * 2f) * dp(5);
 
-            drawCase(canvas, midX, top + dp(86), snapshot);
-            drawEarbud(canvas, midX - dp(112), top + dp(50) + bob, true, batteryValue(snapshot.left, snapshot.combined), snapshot.leftCharging == 1);
-            drawEarbud(canvas, midX + dp(112), top + dp(50) - bob, false, batteryValue(snapshot.right, snapshot.combined), snapshot.rightCharging == 1);
-            drawBatteryStrip(canvas, dp(8), top + dp(224), width - dp(16), snapshot);
+            drawCase(canvas, midX, top + dp(86), caseBattery, partsFresh && snapshot.caseCharging == 1);
+            drawEarbud(canvas, midX - dp(112), top + dp(50) + bob, true, leftBattery, partsFresh && snapshot.leftCharging == 1);
+            drawEarbud(canvas, midX + dp(112), top + dp(50) - bob, false, rightBattery, partsFresh && snapshot.rightCharging == 1);
+            drawBatteryStrip(canvas, dp(8), top + dp(224), width - dp(16), leftBattery, rightBattery, caseBattery,
+                    partsFresh && snapshot.leftCharging == 1, partsFresh && snapshot.rightCharging == 1,
+                    partsFresh && snapshot.caseCharging == 1);
+            if (!partsFresh) {
+                drawCenteredText(canvas, "Waiting for fresh AirPods battery data", midX, top + dp(206), mutedColor, 11, false);
+            }
             drawLocation(canvas, dp(8), top + dp(338), width - dp(16), prefs);
         }
 
-        private void drawCase(Canvas canvas, float cx, float cy, AirPodsBatteryStore.Snapshot snapshot) {
+        private void drawCase(Canvas canvas, float cx, float cy, int battery, boolean charging) {
             float w = Math.min(getWidth() - dp(32), dp(230));
             float h = dp(118);
             rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f);
@@ -1644,9 +1654,9 @@ public class MainActivity extends Activity {
             strokePaint.setStrokeWidth(dp(2));
             strokePaint.setColor(Color.rgb(177, 187, 194));
             canvas.drawLine(rect.left + dp(24), rect.top + dp(43), rect.right - dp(24), rect.top + dp(43), strokePaint);
-            fillPaint.setColor(snapshot.caseCharging == 1 ? accentColor : Color.rgb(144, 154, 162));
+            fillPaint.setColor(charging ? accentColor : Color.rgb(144, 154, 162));
             canvas.drawCircle(cx, rect.top + dp(73), dp(5), fillPaint);
-            drawCenteredText(canvas, percentText(snapshot.caseBattery), cx, rect.bottom - dp(18), Color.rgb(48, 55, 60), 13, true);
+            drawCenteredText(canvas, percentText(battery), cx, rect.bottom - dp(18), Color.rgb(48, 55, 60), 13, true);
         }
 
         private void drawEarbud(Canvas canvas, float cx, float cy, boolean left, int battery, boolean charging) {
@@ -1677,10 +1687,11 @@ public class MainActivity extends Activity {
             }
         }
 
-        private void drawBatteryStrip(Canvas canvas, float left, float top, float width, AirPodsBatteryStore.Snapshot snapshot) {
-            drawBatteryBar(canvas, left, top, width, "Left", batteryValue(snapshot.left, snapshot.combined), snapshot.leftCharging == 1);
-            drawBatteryBar(canvas, left, top + dp(34), width, "Right", batteryValue(snapshot.right, snapshot.combined), snapshot.rightCharging == 1);
-            drawBatteryBar(canvas, left, top + dp(68), width, "Case", snapshot.caseBattery, snapshot.caseCharging == 1);
+        private void drawBatteryStrip(Canvas canvas, float left, float top, float width, int leftBattery, int rightBattery,
+                                      int caseBattery, boolean leftCharging, boolean rightCharging, boolean caseCharging) {
+            drawBatteryBar(canvas, left, top, width, "Left", leftBattery, leftCharging);
+            drawBatteryBar(canvas, left, top + dp(34), width, "Right", rightBattery, rightCharging);
+            drawBatteryBar(canvas, left, top + dp(68), width, "Case", caseBattery, caseCharging);
         }
 
         private void drawBatteryBar(Canvas canvas, float left, float top, float width, String label, int value, boolean charging) {
@@ -1728,10 +1739,6 @@ public class MainActivity extends Activity {
                     : "location unavailable; " + reason;
             drawText(canvas, detail, left + dp(72), top + dp(45), mutedColor, 11, false);
             drawText(canvas, "This is where this phone last saw the AirPods.", left + dp(72), top + dp(66), mutedColor, 10, false);
-        }
-
-        private int batteryValue(int value, int fallback) {
-            return value >= 0 ? value : fallback;
         }
 
         private String percentText(int value) {

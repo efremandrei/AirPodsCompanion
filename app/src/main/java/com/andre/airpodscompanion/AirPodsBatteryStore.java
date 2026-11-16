@@ -21,6 +21,7 @@ import java.util.Locale;
 final class AirPodsBatteryStore {
     static final String PREFS = "airpods_companion_prefs";
     static final String ACTION_REFRESH = "com.andre.airpodscompanion.action.REFRESH_WIDGET";
+    private static final long PARTS_FRESH_MILLIS = 2L * 60L * 1000L;
 
     private static final String KEY_NAME = "widget_device_name";
     private static final String KEY_LEFT = "widget_left";
@@ -117,12 +118,16 @@ final class AirPodsBatteryStore {
 
     static void updateWidget(Context context, AppWidgetManager manager, int appWidgetId) {
         Snapshot snapshot = read(context);
+        boolean partsFresh = isPartsFresh(snapshot, System.currentTimeMillis());
+        int left = partsFresh ? snapshot.left : -1;
+        int right = partsFresh ? snapshot.right : -1;
+        int caseBattery = partsFresh ? snapshot.caseBattery : -1;
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_airpods_battery);
         views.setTextViewText(R.id.widgetTitle, snapshot.modelTitle());
-        views.setImageViewBitmap(R.id.widgetGraphic, renderGraphic(context, snapshot));
-        views.setTextViewText(R.id.widgetLeft, formatPart("L", snapshot.left));
-        views.setTextViewText(R.id.widgetRight, formatPart("R", snapshot.right));
-        views.setTextViewText(R.id.widgetCase, formatPart("Case", snapshot.caseBattery));
+        views.setImageViewBitmap(R.id.widgetGraphic, renderGraphic(context, snapshot, left, right, caseBattery));
+        views.setTextViewText(R.id.widgetLeft, formatPart("L", left));
+        views.setTextViewText(R.id.widgetRight, formatPart("R", right));
+        views.setTextViewText(R.id.widgetCase, formatPart("Case", caseBattery));
         views.setTextViewText(R.id.widgetWearState, snapshot.stateText());
         views.setTextViewText(R.id.widgetStatus, status(snapshot));
 
@@ -136,7 +141,7 @@ final class AirPodsBatteryStore {
         manager.updateAppWidget(appWidgetId, views);
     }
 
-    private static Bitmap renderGraphic(Context context, Snapshot snapshot) {
+    private static Bitmap renderGraphic(Context context, Snapshot snapshot, int leftBattery, int rightBattery, int caseBattery) {
         float density = context.getResources().getDisplayMetrics().density;
         int width = Math.round(360 * density);
         int height = Math.round(116 * density);
@@ -155,23 +160,21 @@ final class AirPodsBatteryStore {
         float caseX = width * 0.50f;
         float rightX = width * 0.81f;
 
-        int leftBattery = snapshot.left;
-        int rightBattery = snapshot.right;
+        boolean partsFresh = isPartsFresh(snapshot, System.currentTimeMillis());
+        drawEarbud(canvas, paint, leftX, centerY, true, leftBattery, partsFresh && snapshot.leftCharging == 1, scale);
+        drawCase(canvas, paint, caseX, centerY + 2 * scale, caseBattery, partsFresh && snapshot.caseCharging == 1, scale);
+        drawEarbud(canvas, paint, rightX, centerY, false, rightBattery, partsFresh && snapshot.rightCharging == 1, scale);
 
-        drawEarbud(canvas, paint, leftX, centerY, true, leftBattery, snapshot.leftCharging == 1, scale);
-        drawCase(canvas, paint, caseX, centerY + 2 * scale, snapshot.caseBattery, snapshot.caseCharging == 1, scale);
-        drawEarbud(canvas, paint, rightX, centerY, false, rightBattery, snapshot.rightCharging == 1, scale);
-
-        drawMiniBar(canvas, paint, 18 * scale, height - 32 * scale, width * 0.26f, "L", leftBattery, snapshot.leftCharging == 1, scale);
-        drawMiniBar(canvas, paint, width * 0.37f, height - 32 * scale, width * 0.26f, "R", rightBattery, snapshot.rightCharging == 1, scale);
-        drawMiniBar(canvas, paint, width * 0.70f, height - 32 * scale, width * 0.26f, "Case", snapshot.caseBattery, snapshot.caseCharging == 1, scale);
+        drawMiniBar(canvas, paint, 18 * scale, height - 32 * scale, width * 0.26f, "L", leftBattery, partsFresh && snapshot.leftCharging == 1, scale);
+        drawMiniBar(canvas, paint, width * 0.37f, height - 32 * scale, width * 0.26f, "R", rightBattery, partsFresh && snapshot.rightCharging == 1, scale);
+        drawMiniBar(canvas, paint, width * 0.70f, height - 32 * scale, width * 0.26f, "Case", caseBattery, partsFresh && snapshot.caseCharging == 1, scale);
 
         paint.setStyle(Paint.Style.FILL);
         paint.setTextAlign(Paint.Align.CENTER);
         paint.setTextSize(9 * scale);
         paint.setFakeBoldText(false);
         paint.setColor(Color.rgb(149, 162, 172));
-        canvas.drawText(compactState(snapshot), caseX, top + 5 * scale, paint);
+        canvas.drawText(partsFresh ? compactState(snapshot) : "Battery data is stale", caseX, top + 5 * scale, paint);
         paint.setFakeBoldText(false);
         return bitmap;
     }
@@ -280,7 +283,7 @@ final class AirPodsBatteryStore {
 
     private static String percentLabel(int value, boolean charging) {
         String text = value >= 0 ? value + "%" : "--";
-        return charging ? text + "+" : text;
+        return charging && value >= 0 ? text + "+" : text;
     }
 
     private static String compactState(Snapshot snapshot) {
@@ -305,16 +308,24 @@ final class AirPodsBatteryStore {
     }
 
     private static String status(Snapshot snapshot) {
-        if (snapshot.left < 0 && snapshot.right < 0 && snapshot.caseBattery < 0 && snapshot.combined >= 0) {
+        long now = System.currentTimeMillis();
+        boolean splitData = snapshot.left >= 0 || snapshot.right >= 0 || snapshot.caseBattery >= 0;
+        if (!splitData && snapshot.combined >= 0) {
             String combinedUpdated = snapshot.combinedUpdatedAt > 0
                     ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.combinedUpdatedAt))
                     : "time unknown";
-            return snapshot.combinedSource + " · combined earbuds " + snapshot.combined + "% · " + combinedUpdated;
+            return snapshot.combinedSource + " · combined earbuds " + snapshot.combined + "% · " + combinedUpdated
+                    + (snapshot.combinedUpdatedAt > 0 && now - snapshot.combinedUpdatedAt > PARTS_FRESH_MILLIS ? " (stale)" : "");
         }
         String updated = snapshot.updatedAt > 0
                 ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt))
                 : "not yet";
-        return snapshot.source + " · " + updated;
+        return snapshot.source + " · " + updated
+                + (splitData && !isPartsFresh(snapshot, now) ? " (stale)" : "");
+    }
+
+    private static boolean isPartsFresh(Snapshot snapshot, long now) {
+        return snapshot.updatedAt > 0 && now - snapshot.updatedAt <= PARTS_FRESH_MILLIS;
     }
 
     static final class Snapshot {
