@@ -4,7 +4,10 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.os.Build;
 import android.os.ParcelUuid;
+
+import org.lsposed.hiddenapibypass.HiddenApiBypass;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -54,6 +57,9 @@ final class AacpNoiseControl {
     }
 
     private static SocketCandidate openAacpSocket(BluetoothDevice device) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            HiddenApiBypass.addHiddenApiExemptions("Landroid/bluetooth/");
+        }
         String[] methods = {
                 "createInsecureL2capSocket",
                 "createL2capSocket"

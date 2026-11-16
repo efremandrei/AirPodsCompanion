@@ -9,6 +9,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.BroadcastReceiver;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -26,80 +27,100 @@ import java.net.URL;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class AppUpdateChecker {
     private static final String TAG = "AppUpdateChecker";
     private static final String PREFS = "app_update_checker";
-    private static final String LAST_CHECK = "last_check_millis";
-    private static final long ONE_WEEK_MILLIS = 7L * 24L * 60L * 60L * 1000L;
+    private static final String LAST_ATTEMPT = "last_attempt_millis";
+    private static final String LAST_SUCCESSFUL_CHECK = "last_successful_check_millis";
+    private static final long ONE_DAY_MILLIS = 24L * 60L * 60L * 1000L;
+    private static final long RETRY_AFTER_FAILURE_MILLIS = 2L * 60L * 60L * 1000L;
     private static final String RELEASES_API_URL = "https://api.github.com/repos/efremandrei/AirPodsCompanion/releases/latest";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+    private static final AtomicBoolean CHECK_IN_PROGRESS = new AtomicBoolean();
 
     private AppUpdateChecker() {
     }
 
     public static void checkDaily(Activity activity) {
         Context appContext = activity.getApplicationContext();
-        AppContextHolder.context = appContext;
-        if (!shouldCheck(appContext)) {
+        if (!beginCheck(appContext, false)) {
             return;
         }
-        markChecked(appContext);
-        EXECUTOR.execute(() -> {
-            UpdateInfo update = findUpdate();
-            if (update == null) {
-                return;
-            }
-            activity.runOnUiThread(() -> {
-                if (!activity.isFinishing() && !activity.isDestroyed()) {
-                    showDialog(activity, update);
-                }
-            });
-        });
+        executeCheck(appContext, activity, false, null);
     }
 
     public static void checkNow(Activity activity) {
         Context appContext = activity.getApplicationContext();
-        AppContextHolder.context = appContext;
-        markChecked(appContext);
-        EXECUTOR.execute(() -> {
-            UpdateInfo update = findUpdate();
-            activity.runOnUiThread(() -> {
-                if (activity.isFinishing() || activity.isDestroyed()) {
-                    return;
-                }
-                if (update != null) {
-                    showDialog(activity, update);
-                } else {
-                    Toast.makeText(activity, "No updates found", Toast.LENGTH_SHORT).show();
-                }
-            });
-        });
-    }
-    public static void checkFromBoot(Context context) {
-        Context appContext = context.getApplicationContext();
-        AppContextHolder.context = appContext;
-        if (!shouldCheck(appContext)) {
+        if (!beginCheck(appContext, true)) {
+            Toast.makeText(activity, "An update check is already running.", Toast.LENGTH_SHORT).show();
             return;
         }
-        markChecked(appContext);
+        Toast.makeText(activity, "Checking for updates…", Toast.LENGTH_SHORT).show();
+        executeCheck(appContext, activity, true, null);
+    }
+
+    public static void checkFromBoot(Context context, BroadcastReceiver.PendingResult pendingResult) {
+        Context appContext = context.getApplicationContext();
+        if (!beginCheck(appContext, false)) {
+            pendingResult.finish();
+            return;
+        }
+        executeCheck(appContext, null, false, pendingResult);
+    }
+
+    private static void executeCheck(Context appContext, Activity activity, boolean showResult,
+                                     BroadcastReceiver.PendingResult pendingResult) {
         EXECUTOR.execute(() -> {
-            UpdateInfo update = findUpdate();
-            if (update != null) {
-                showNotification(appContext, update);
+            try {
+                UpdateCheckResult result = findUpdate(appContext);
+                if (result.successful) {
+                    prefs(appContext).edit().putLong(LAST_SUCCESSFUL_CHECK, System.currentTimeMillis()).apply();
+                }
+                if (activity != null) {
+                    activity.runOnUiThread(() -> {
+                        if (activity.isFinishing() || activity.isDestroyed()) {
+                            return;
+                        }
+                        if (result.update != null) {
+                            showDialog(activity, result.update);
+                        } else if (showResult) {
+                            Toast.makeText(activity,
+                                    result.successful ? "You're up to date." : "Couldn't check for updates. Try again later.",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } else if (result.update != null) {
+                    showNotification(appContext, result.update);
+                }
+            } finally {
+                CHECK_IN_PROGRESS.set(false);
+                if (pendingResult != null) {
+                    pendingResult.finish();
+                }
             }
         });
     }
 
-    private static boolean shouldCheck(Context context) {
-        long lastCheck = prefs(context).getLong(LAST_CHECK, 0L);
-        return System.currentTimeMillis() - lastCheck >= ONE_WEEK_MILLIS;
-    }
-
-    private static void markChecked(Context context) {
-        prefs(context).edit().putLong(LAST_CHECK, System.currentTimeMillis()).apply();
+    private static boolean beginCheck(Context context, boolean force) {
+        if (!force) {
+            SharedPreferences preferences = prefs(context);
+            long now = System.currentTimeMillis();
+            long lastSuccess = preferences.getLong(LAST_SUCCESSFUL_CHECK, 0L);
+            long lastAttempt = preferences.getLong(LAST_ATTEMPT, 0L);
+            if (now - lastSuccess < ONE_DAY_MILLIS
+                    || now - lastAttempt < RETRY_AFTER_FAILURE_MILLIS) {
+                return false;
+            }
+        }
+        if (!CHECK_IN_PROGRESS.compareAndSet(false, true)) {
+            return false;
+        }
+        prefs(context).edit().putLong(LAST_ATTEMPT, System.currentTimeMillis()).apply();
+        return true;
     }
 
 
@@ -107,7 +128,7 @@ public final class AppUpdateChecker {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    private static UpdateInfo findUpdate() {
+    private static UpdateCheckResult findUpdate(Context context) {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(RELEASES_API_URL).openConnection();
@@ -116,7 +137,7 @@ public final class AppUpdateChecker {
             connection.setRequestProperty("Accept", "application/vnd.github+json");
             connection.setRequestProperty("User-Agent", "AndroidAppUpdateChecker");
             if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                return null;
+                return UpdateCheckResult.failed();
             }
             StringBuilder body = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
@@ -128,7 +149,7 @@ public final class AppUpdateChecker {
             JSONObject release = new JSONObject(body.toString());
             String tag = release.optString("tag_name", "").trim();
             if (tag.isEmpty()) {
-                return null;
+                return UpdateCheckResult.failed();
             }
             String releaseUrl = release.optString("html_url", "");
             String downloadUrl = releaseUrl;
@@ -148,13 +169,19 @@ public final class AppUpdateChecker {
                     }
                 }
             }
-            if (downloadUrl.isEmpty() || !isNewer(tag, assetName)) {
-                return null;
+            if (downloadUrl.isEmpty()) {
+                downloadUrl = releaseUrl;
             }
-            return new UpdateInfo(tag, assetName, downloadUrl);
+            if (downloadUrl.isEmpty()) {
+                return UpdateCheckResult.failed();
+            }
+            UpdateInfo update = isNewer(context, tag, assetName)
+                    ? new UpdateInfo(tag, assetName, downloadUrl)
+                    : null;
+            return UpdateCheckResult.succeeded(update);
         } catch (Exception error) {
             Log.w(TAG, "Update check failed", error);
-            return null;
+            return UpdateCheckResult.failed();
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -162,19 +189,19 @@ public final class AppUpdateChecker {
         }
     }
 
-    private static boolean isNewer(String tag, String assetName) {
+    private static boolean isNewer(Context context, String tag, String assetName) {
         int latestBuild = Math.max(extractBuildNumber(tag), extractBuildNumber(assetName));
-        if (latestBuild > currentVersionCode()) {
+        if (latestBuild > currentVersionCode(context)) {
             return true;
         }
         String latestVersion = normalizeVersion(tag);
-        String currentVersion = normalizeVersion(currentVersionName());
+        String currentVersion = normalizeVersion(currentVersionName(context));
         return compareVersions(latestVersion, currentVersion) > 0;
     }
 
-    private static int currentVersionCode() {
+    private static int currentVersionCode(Context context) {
         try {
-            PackageInfo info = appContext().getPackageManager().getPackageInfo(appContext().getPackageName(), 0);
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
             if (Build.VERSION.SDK_INT >= 28) {
                 return (int) info.getLongVersionCode();
             }
@@ -184,18 +211,15 @@ public final class AppUpdateChecker {
         }
     }
 
-    private static String currentVersionName() {
+    private static String currentVersionName(Context context) {
         try {
-            PackageInfo info = appContext().getPackageManager().getPackageInfo(appContext().getPackageName(), 0);
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
             return info.versionName == null ? "" : info.versionName;
         } catch (Exception error) {
             return "";
         }
     }
 
-    private static Context appContext() {
-        return AppContextHolder.context;
-    }
     private static int extractBuildNumber(String text) {
         Matcher matcher = Pattern.compile("(?i)(?:build|versionCode|code)[-_ ]?(\\d+)").matcher(text == null ? "" : text);
         int value = -1;
@@ -241,8 +265,9 @@ public final class AppUpdateChecker {
     private static void showDialog(Activity activity, UpdateInfo update) {
         new AlertDialog.Builder(activity)
             .setTitle("Update available")
-            .setMessage("A newer build is available in the origin repo: " + update.displayName() + ".")
-            .setPositiveButton("Download", (dialog, which) -> openDownload(activity, update.downloadUrl))
+            .setMessage("AirPods Companion " + update.tag + " is available. Download " + update.displayName() + " to update.")
+            .setPositiveButton(update.assetName.isEmpty() ? "View release" : "Download APK",
+                    (dialog, which) -> openDownload(activity, update.downloadUrl))
             .setNegativeButton("Later", null)
             .show();
     }
@@ -290,9 +315,24 @@ public final class AppUpdateChecker {
         context.startActivity(intent);
     }
 
-    private static final class AppContextHolder {
-        static Context context;
+    private static final class UpdateCheckResult {
+        final boolean successful;
+        final UpdateInfo update;
+
+        private UpdateCheckResult(boolean successful, UpdateInfo update) {
+            this.successful = successful;
+            this.update = update;
+        }
+
+        static UpdateCheckResult succeeded(UpdateInfo update) {
+            return new UpdateCheckResult(true, update);
+        }
+
+        static UpdateCheckResult failed() {
+            return new UpdateCheckResult(false, null);
+        }
     }
+
     private static final class UpdateInfo {
         final String tag;
         final String assetName;

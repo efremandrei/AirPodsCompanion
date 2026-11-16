@@ -14,7 +14,7 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 - Show an optional case-open popup while the app is open.
 - Offer opt-in experimental auto-pause/resume while the app is open, based on BLE in-ear state.
 - Provide direct shortcuts to Bluetooth settings for pairing and Sound settings for output routing.
-- Keep the app lightweight, local, and dependency-free.
+- Keep the app lightweight and local; use a small compatibility library only for the private classic Bluetooth socket AirPods controls require.
 
 ## Design
 
@@ -36,6 +36,7 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 4. Open the AirPods case near the phone and keep the app open for a few seconds so Android can deliver Bluetooth battery or AirPods BLE data.
 5. Add the home-screen widget: long-press the home screen, choose Widgets, pick AirPods Companion, then place the AirPods battery widget.
 6. Tap the widget to open the app and refresh scanning when values are missing or stale.
+7. The app checks GitHub for a newer release at launch (at most once per day). Open About and tap **Check for updates** to check immediately.
 
 ## Android and AirPods limits
 
@@ -60,14 +61,14 @@ Reverse-engineering references used for the current BLE feature set:
 The named APK is written to:
 
 ```text
-artifacts/AirPodsCompanion-1.0.24-build25-arm64-v8a-debug.apk
+artifacts/AirPodsCompanion-1.0.27-build28-arm64-v8a-debug.apk
 ```
 
 ## App Identity
 
 - Package: `com.andre.airpodscompanion`
-- Version: `1.0.24`
-- Build: `25`
+- Version: `1.0.27`
+- Build: `28`
 - Developer: Andrei Efremuahkin
 - Email: `andrei.efr@gmail.com`
 - Repo URL used in About: `https://github.com/efremandrei/AirPodsCompanion`

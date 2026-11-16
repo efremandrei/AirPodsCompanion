@@ -114,6 +114,7 @@ public class MainActivity extends Activity {
     private TextView hardwareStatus;
     private TextView noiseControlStatus;
     private TextView scanDiagnosticStatus;
+    private TextView noiseDiagnosticStatus;
     private TextView lastUpdated;
 
     private int bg;
@@ -297,32 +298,54 @@ public class MainActivity extends Activity {
         headlineStatus = label("Checking Bluetooth", 22, Typeface.BOLD, text);
         summary.addView(headlineStatus);
         detailStatus = label("", 15, Typeface.NORMAL, muted);
-        detailStatus.setPadding(0, dp(8), 0, 0);
+        detailStatus.setPadding(0, dp(6), 0, 0);
         summary.addView(detailStatus);
+        lastUpdated = label("", 12, Typeface.NORMAL, muted);
+        lastUpdated.setPadding(0, dp(6), 0, dp(12));
+        summary.addView(lastUpdated);
+
+        summary.addView(sectionHeading("Connection"));
         profileStatus = label("", 14, Typeface.NORMAL, muted);
-        profileStatus.setPadding(0, dp(10), 0, 0);
+        profileStatus.setPadding(0, dp(5), 0, 0);
         summary.addView(profileStatus);
         audioStatus = label("", 14, Typeface.NORMAL, muted);
-        audioStatus.setPadding(0, dp(6), 0, 0);
+        audioStatus.setPadding(0, dp(5), 0, dp(12));
         summary.addView(audioStatus);
+
+        summary.addView(sectionHeading("Battery and earbuds"));
         widgetBatteryStatus = label("", 14, Typeface.NORMAL, muted);
-        widgetBatteryStatus.setPadding(0, dp(6), 0, 0);
+        widgetBatteryStatus.setPadding(0, dp(5), 0, 0);
         summary.addView(widgetBatteryStatus);
         experimentalStatus = label("", 14, Typeface.NORMAL, muted);
-        experimentalStatus.setPadding(0, dp(6), 0, 0);
+        experimentalStatus.setPadding(0, dp(5), 0, 0);
         summary.addView(experimentalStatus);
         hardwareStatus = label("", 14, Typeface.NORMAL, muted);
-        hardwareStatus.setPadding(0, dp(6), 0, 0);
+        hardwareStatus.setPadding(0, dp(5), 0, dp(12));
         summary.addView(hardwareStatus);
+
+        summary.addView(sectionHeading("Noise control"));
         noiseControlStatus = label("", 14, Typeface.NORMAL, muted);
-        noiseControlStatus.setPadding(0, dp(6), 0, 0);
+        noiseControlStatus.setPadding(0, dp(5), 0, dp(8));
         summary.addView(noiseControlStatus);
+
+        TextView diagnosticsToggle = label("Show technical details  ▾", 14, Typeface.BOLD, accent);
+        diagnosticsToggle.setPadding(0, dp(8), 0, 0);
+        summary.addView(diagnosticsToggle);
+        LinearLayout diagnostics = new LinearLayout(this);
+        diagnostics.setOrientation(LinearLayout.VERTICAL);
+        diagnostics.setVisibility(View.GONE);
+        summary.addView(diagnostics, matchWrap());
+        diagnosticsToggle.setOnClickListener(v -> {
+            boolean show = diagnostics.getVisibility() != View.VISIBLE;
+            diagnostics.setVisibility(show ? View.VISIBLE : View.GONE);
+            diagnosticsToggle.setText(show ? "Hide technical details  ▴" : "Show technical details  ▾");
+        });
         scanDiagnosticStatus = label("", 12, Typeface.NORMAL, muted);
         scanDiagnosticStatus.setPadding(0, dp(8), 0, 0);
-        summary.addView(scanDiagnosticStatus);
-        lastUpdated = label("", 12, Typeface.NORMAL, muted);
-        lastUpdated.setPadding(0, dp(10), 0, 0);
-        summary.addView(lastUpdated);
+        diagnostics.addView(scanDiagnosticStatus);
+        noiseDiagnosticStatus = label("", 12, Typeface.NORMAL, muted);
+        noiseDiagnosticStatus.setPadding(0, dp(6), 0, 0);
+        diagnostics.addView(noiseDiagnosticStatus);
 
         CheckBox autoPause = new CheckBox(this);
         autoPause.setText("Experimental auto-pause while app is open");
@@ -371,6 +394,12 @@ public class MainActivity extends Activity {
         preferences.edit().putBoolean(PREF_DARK, darkMode).apply();
         buildUi();
         refreshDevices();
+    }
+
+    private TextView sectionHeading(String title) {
+        TextView heading = label(title, 16, Typeface.BOLD, text);
+        heading.setPadding(0, dp(4), 0, 0);
+        return heading;
     }
 
     private void applyPalette() {
@@ -522,20 +551,18 @@ public class MainActivity extends Activity {
 
     private String profileSummary() {
         if (!hasBluetoothConnectPermission()) {
-            return "Profiles: permission required";
+            return "Bluetooth audio details need Nearby devices permission.";
         }
-        StringBuilder builder = new StringBuilder("Profiles: ");
         int a2dpCount = countProfile(BluetoothProfile.A2DP);
         int headsetCount = countProfile(BluetoothProfile.HEADSET);
-        builder.append("media ").append(a2dpCount > 0 ? "connected" : "idle");
-        builder.append(", calls ").append(headsetCount > 0 ? "connected" : "idle");
-        return builder.toString();
+        return "Media audio: " + (a2dpCount > 0 ? "Connected" : "Not connected")
+                + "\nCall audio: " + (headsetCount > 0 ? "Connected" : "Not connected");
     }
 
     private String audioSummary() {
         AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (audioManager == null) {
-            return "Audio route: unavailable";
+            return "Playback: Audio status unavailable";
         }
         boolean musicActive = audioManager.isMusicActive();
         String mode;
@@ -551,7 +578,8 @@ public class MainActivity extends Activity {
                 mode = "normal";
                 break;
         }
-        return "Audio: " + (musicActive ? "media active" : "media idle") + ", phone mode " + mode;
+        String phoneState = "normal".equals(mode) ? "Ready" : mode.substring(0, 1).toUpperCase(Locale.US) + mode.substring(1);
+        return "Playback: " + (musicActive ? "Active" : "Idle") + "\nPhone audio: " + phoneState;
     }
 
     private int countProfile(int profile) {
@@ -613,20 +641,31 @@ public class MainActivity extends Activity {
             return;
         }
         AirPodsBatteryStore.Snapshot snapshot = AirPodsBatteryStore.read(this);
-        widgetBatteryStatus.setText("Widget battery: " + snapshot.detailText());
+        widgetBatteryStatus.setText(snapshot.detailText().replace("Left ", "Left earbud: ")
+                .replace(" · Right ", "\nRight earbud: ")
+                .replace(" · Case ", "\nCase: ")
+                .replace(" charging", " (charging)"));
         if (experimentalStatus != null) {
-            experimentalStatus.setText("Experimental: " + snapshot.stateText()
-                    + " · auto-pause " + (autoPauseEnabled ? "on" : "off"));
+            String wear = snapshot.stateText().replace("Ear ", "")
+                    .replace("L in", "Left ear in").replace("L out", "Left ear out").replace("L ?", "Left ear unknown")
+                    .replace("R in", "Right ear in").replace("R out", "Right ear out").replace("R ?", "Right ear unknown")
+                    .replace("/", " · ").replace(" · Lid Open", " · Case open")
+                    .replace(" · Lid Closed", " · Case closed").replace(" · Lid ", " · Case ");
+            experimentalStatus.setText("Wear detection: " + wear + "\nAuto-pause: " + (autoPauseEnabled ? "On" : "Off"));
         }
         if (hardwareStatus != null) {
-            hardwareStatus.setText(snapshot.hardwareText());
+            hardwareStatus.setText(snapshot.hardwareText().replace("Model ", "Device: ")
+                    .replace(" · Mic ", "\nMicrophone: ").replace(" · Case ", "\nEarbuds in case: "));
         }
         if (scanDiagnosticStatus != null) {
             scanDiagnosticStatus.setText(scanDiagnosticSummary());
         }
         if (noiseControlStatus != null) {
             String status = preferences.getString(PREF_NOISE_STATUS, "Noise control: ready when AirPods are connected");
-            noiseControlStatus.setText(status);
+            noiseControlStatus.setText(status.startsWith("Noise control failed:")
+                    ? "This phone's Bluetooth software could not open the AirPods control connection. See Technical details."
+                    : status.replace("Noise control: ", ""));
+            noiseDiagnosticStatus.setText(status.startsWith("Noise control failed:") ? status : "");
         }
     }
 
@@ -650,7 +689,7 @@ public class MainActivity extends Activity {
                 AacpNoiseControl.setMode(device, mode);
                 runOnUiThread(() -> setNoiseStatus("Noise control: " + label + " command sent"));
             } catch (Exception error) {
-                runOnUiThread(() -> setNoiseStatus("Noise control failed: " + shortError(error)));
+                runOnUiThread(() -> setNoiseStatus("Noise control failed: Phone Bluetooth software did not open the AirPods control connection. Details: " + shortError(error)));
             }
         }, "airpods-aacp-noise").start();
     }
@@ -658,7 +697,10 @@ public class MainActivity extends Activity {
     private void setNoiseStatus(String status) {
         preferences.edit().putString(PREF_NOISE_STATUS, status).apply();
         if (noiseControlStatus != null) {
-            noiseControlStatus.setText(status);
+            noiseControlStatus.setText(status.startsWith("Noise control failed:")
+                    ? "This phone's Bluetooth software could not open the AirPods control connection. See Technical details."
+                    : status.replace("Noise control: ", ""));
+            noiseDiagnosticStatus.setText(status.startsWith("Noise control failed:") ? status : "");
         }
     }
 
@@ -691,24 +733,34 @@ public class MainActivity extends Activity {
             return;
         }
         try {
+            String name = deviceName(device);
             batteryByAddress.put(device.getAddress(), level);
             int left = extraBattery(intent, "left");
             int right = extraBattery(intent, "right");
             int caseBattery = extraBattery(intent, "case");
             boolean hasSplit = left >= 0 || right >= 0 || caseBattery >= 0;
+            AirPodsBatteryStore.Snapshot previous = AirPodsBatteryStore.read(this);
+            if (!isAppleEarbud(name) && !hasSplit) {
+                return;
+            }
+            if (left < 0) left = previous.left;
+            if (right < 0) right = previous.right;
+            if (caseBattery < 0) caseBattery = previous.caseBattery;
             AirPodsBatteryStore.write(this, new AirPodsBatteryStore.Snapshot(
-                    deviceName(device),
+                    isAppleEarbud(name) ? name : previous.deviceName,
                     left,
                     right,
                     caseBattery,
                     validBattery(level) ? level : -1,
                     System.currentTimeMillis(),
-                    hasSplit ? "Android battery extras" : "Android battery",
+                    hasSplit ? "Android battery extras" : "Android combined battery",
                     hasSplit
-                            ? "Android exposed separate battery values."
-                            : "Android exposed one combined Bluetooth battery value."
+                            ? "Separate Android battery values are shown where provided; existing AirPods readings are retained for omitted parts."
+                            : "Android exposed one combined Bluetooth battery value; it is not a separate reading for each earbud or the case."
             ));
-            recordAirPodsSeen("Android battery event");
+            if (isAppleEarbud(name) || hasSplit) {
+                recordAirPodsSeen("Android battery event");
+            }
         } catch (SecurityException ignored) {
             // Permission can be revoked while the app is open.
         }

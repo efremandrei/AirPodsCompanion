@@ -9,7 +9,7 @@ public final class BootUpdateReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         String action = intent == null ? "" : intent.getAction();
         if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
-            AppUpdateChecker.checkFromBoot(context);
+            AppUpdateChecker.checkFromBoot(context, goAsync());
         }
     }
 }
