@@ -110,6 +110,8 @@ public class MainActivity extends Activity {
     private boolean airPodsScanActive;
     private BluetoothProfile a2dpProfile;
     private BluetoothProfile headsetProfile;
+    private AacpBatteryMonitor aacpBatteryMonitor;
+    private String aacpBatteryAddress;
 
     private LinearLayout root;
     private LinearLayout deviceList;
@@ -172,6 +174,10 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         AppUpdateChecker.checkDaily(this);
         preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String oldNoiseStatus = preferences.getString(PREF_NOISE_STATUS, "");
+        if (oldNoiseStatus.startsWith("Noise control: AACP probe:")) {
+            preferences.edit().remove(PREF_NOISE_STATUS).apply();
+        }
         darkMode = preferences.getBoolean(PREF_DARK, true);
         autoPauseEnabled = preferences.getBoolean(PREF_AUTO_PAUSE, false);
         casePopupEnabled = preferences.getBoolean(PREF_CASE_POPUP, true);
@@ -198,6 +204,7 @@ public class MainActivity extends Activity {
             registerReceiver(bluetoothReceiver, filter);
         }
         startAirPodsBatteryScanIfPossible();
+        refreshDevices();
     }
 
     @Override
@@ -205,6 +212,7 @@ public class MainActivity extends Activity {
         activityVisible = false;
         handler.removeCallbacks(batteryScanRetry);
         stopAirPodsBatteryScan();
+        stopAacpBatteryMonitor();
         try {
             unregisterReceiver(bluetoothReceiver);
         } catch (IllegalArgumentException ignored) {
@@ -466,6 +474,7 @@ public class MainActivity extends Activity {
                 break;
             }
         }
+        syncAacpBatteryMonitor(airPods);
 
         if (!bluetoothAvailable) {
             headlineStatus.setText("Bluetooth is not available");
@@ -509,6 +518,63 @@ public class MainActivity extends Activity {
         for (BluetoothDevice device : airPods) {
             deviceList.addView(deviceRow(device), blockMargins());
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void syncAacpBatteryMonitor(List<BluetoothDevice> airPods) {
+        if (!activityVisible || !hasBluetoothConnectPermission()) {
+            stopAacpBatteryMonitor();
+            return;
+        }
+        BluetoothDevice connected = null;
+        for (BluetoothDevice device : airPods) {
+            if (isConnected(device)) {
+                connected = device;
+                break;
+            }
+        }
+        if (connected == null) {
+            stopAacpBatteryMonitor();
+            return;
+        }
+        String address = connected.getAddress();
+        if (address.equals(aacpBatteryAddress) && aacpBatteryMonitor != null) return;
+        stopAacpBatteryMonitor();
+        aacpBatteryAddress = address;
+        String name = deviceName(connected);
+        AacpBatteryMonitor[] holder = new AacpBatteryMonitor[1];
+        AacpBatteryMonitor monitor = new AacpBatteryMonitor(this, connected, name, new AacpBatteryMonitor.Listener() {
+            @Override
+            public void onBattery(AirPodsBatteryStore.Snapshot snapshot) {
+                runOnUiThread(() -> {
+                    if (aacpBatteryMonitor != holder[0]) return;
+                    AirPodsBatteryStore.write(MainActivity.this, snapshot);
+                    preferences.edit().remove("aacp_battery_status").apply();
+                    recordAirPodsSeen("Live AirPods battery");
+                    refreshDevices();
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (aacpBatteryMonitor != holder[0]) return;
+                    SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+                    prefs.edit().putString("aacp_battery_status", "AACP battery read failed: " + message).apply();
+                    updateWidgetBatterySummary();
+                });
+            }
+        });
+        holder[0] = monitor;
+        aacpBatteryMonitor = monitor;
+        monitor.start();
+    }
+
+    private void stopAacpBatteryMonitor() {
+        AacpBatteryMonitor monitor = aacpBatteryMonitor;
+        aacpBatteryMonitor = null;
+        aacpBatteryAddress = null;
+        if (monitor != null) monitor.stop();
     }
 
     private LinearLayout deviceRow(BluetoothDevice device) {
@@ -663,7 +729,9 @@ public class MainActivity extends Activity {
         if (snapshot.updatedAt > 0
                 && (snapshot.left >= 0 || snapshot.right >= 0 || snapshot.caseBattery >= 0)) {
             String time = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt));
-            String source = snapshot.source.contains("BLE") ? "AirPods BLE" : "Separate Android battery";
+            String source = "AirPods AACP".equals(snapshot.source)
+                    ? "Live AirPods AACP"
+                    : snapshot.source.contains("BLE") ? "AirPods BLE" : "Separate Android battery";
             lines.add(source + " data: " + time
                     + (now - snapshot.updatedAt > 120000L ? " (may be stale)" : ""));
         }
@@ -672,6 +740,8 @@ public class MainActivity extends Activity {
             lines.add("Combined Android data: " + time
                     + (now - snapshot.combinedUpdatedAt > 120000L ? " (may be stale)" : ""));
         }
+        String aacpStatus = preferences.getString("aacp_battery_status", "");
+        if (!TextUtils.isEmpty(aacpStatus)) lines.add(aacpStatus);
         if (lines.isEmpty()) {
             return "Waiting for AirPods battery data; keep the case nearby and this screen open.";
         }

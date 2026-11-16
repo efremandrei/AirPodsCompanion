@@ -6,7 +6,7 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 
 - Give the user one screen that clearly says whether AirPods are paired, connected, or missing.
 - Request only the Bluetooth permission needed for paired/connected device status on modern Android.
-- Surface battery level when Android exposes it through the Bluetooth stack, and say "Battery unknown" when it does not.
+- Read live left, right, and case battery reports over the AirPods AACP channel when the paired AirPods support it; fall back to Android battery broadcasts and BLE when AACP is unavailable.
 - Provide a home-screen widget for left earbud, right earbud, and case battery when those split values are available.
 - Show experimental in-ear, charging, and case-lid state when AirPods BLE frames expose enough information.
 - Identify common AirPods and Beats models from reverse-engineered BLE model codes.
@@ -33,7 +33,7 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 1. Install the APK on the Android phone.
 2. Pair the AirPods in Android Bluetooth settings.
 3. Open AirPods Companion and allow the Nearby devices/Bluetooth permission when Android asks.
-4. Open the AirPods case near the phone and keep the app open for a few seconds so Android can deliver Bluetooth battery or AirPods BLE data.
+4. Keep AirPods connected and open the case near the phone. The app listens for live battery reports while its screen is open.
 5. Add the home-screen widget: long-press the home screen, choose Widgets, pick AirPods Companion, then place the AirPods battery widget.
 6. Tap the widget to open the app and refresh scanning when values are missing or stale.
 7. The app checks GitHub for a newer release at launch (at most once per day). Open About and tap **Check for updates** to check immediately.
@@ -42,7 +42,7 @@ Native Android app for using Apple AirPods more comfortably on Android phones.
 
 Android can pair and route audio to AirPods through normal Bluetooth audio profiles. Features tied to Apple's private ecosystem, such as automatic iCloud switching, full earbud/case battery breakdown, firmware management, and Apple-only spatial controls, are not available through public Android APIs.
 
-This app reads public paired-device, profile, battery, and BLE advertisement signals. Some phones expose a single Bluetooth battery value for AirPods; some expose AirPods BLE manufacturer advertisements that include left/right/case battery in 10% steps; others do not expose battery at all.
+This app reads paired-device and audio-profile state, Android battery broadcasts, BLE advertisements, and the AirPods AACP battery channel when available. AACP can report individual left, right, and case charge values; phone firmware, AirPods model, and case state affect whether those reports are available.
 
 Experimental ear detection and case-lid state are inferred from AirPods BLE status bytes. They are useful enough for display and opt-in media pause/resume, but they are not equivalent to Apple's private AirPods settings on iPhone.
 
@@ -58,17 +58,17 @@ Reverse-engineering references used for the current BLE feature set:
 .\gradlew.bat --% :app:assembleDebug :app:lintDebug copySamsungDebugApk --no-daemon -Dorg.gradle.problems.report=false
 ```
 
-The named APK is written to:
+The Samsung arm64 APK is written to:
 
 ```text
-artifacts/AirPodsCompanion-1.0.31-build32-arm64-v8a-debug.apk
+artifacts/AirPodsCompanion-1.0.32-build33-arm64-v8a-debug.apk
 ```
 
 ## App Identity
 
 - Package: `com.andre.airpodscompanion`
-- Version: `1.0.31`
-- Build: `31`
+- Version: `1.0.32`
+- Build: `33`
 - Developer: Andrei Efremuahkin
 - Email: `andrei.efr@gmail.com`
 - Repo URL used in About: `https://github.com/efremandrei/AirPodsCompanion`
