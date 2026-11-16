@@ -6,17 +6,12 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.os.Build;
 import android.widget.RemoteViews;
 
 import java.text.DateFormat;
 import java.util.Date;
-import java.util.Locale;
 
 final class AirPodsBatteryStore {
     static final String PREFS = "airpods_companion_prefs";
@@ -119,16 +114,27 @@ final class AirPodsBatteryStore {
     static void updateWidget(Context context, AppWidgetManager manager, int appWidgetId) {
         Snapshot snapshot = read(context);
         boolean partsFresh = isPartsFresh(snapshot, System.currentTimeMillis());
-        int left = partsFresh ? snapshot.left : -1;
-        int right = partsFresh ? snapshot.right : -1;
-        int caseBattery = partsFresh ? snapshot.caseBattery : -1;
+        int left = snapshot.left;
+        int right = snapshot.right;
+        int caseBattery = snapshot.caseBattery;
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_airpods_battery);
         views.setTextViewText(R.id.widgetTitle, snapshot.modelTitle());
-        views.setImageViewBitmap(R.id.widgetGraphic, renderGraphic(context, snapshot, left, right, caseBattery));
-        views.setTextViewText(R.id.widgetLeft, formatPart("L", left));
-        views.setTextViewText(R.id.widgetRight, formatPart("R", right));
-        views.setTextViewText(R.id.widgetCase, formatPart("Case", caseBattery));
-        views.setTextViewText(R.id.widgetWearState, snapshot.stateText());
+        views.setTextViewText(R.id.widgetLeftValue, batteryLabel(left));
+        views.setTextViewText(R.id.widgetRightValue, batteryLabel(right));
+        views.setTextViewText(R.id.widgetCaseValue, batteryLabel(caseBattery));
+        int leftColor = partsFresh ? batteryColor(left) : staleBatteryColor(left);
+        int rightColor = partsFresh ? batteryColor(right) : staleBatteryColor(right);
+        int caseColor = partsFresh ? batteryColor(caseBattery) : staleBatteryColor(caseBattery);
+        views.setTextColor(R.id.widgetLeftValue, leftColor);
+        views.setTextColor(R.id.widgetRightValue, rightColor);
+        views.setTextColor(R.id.widgetCaseValue, caseColor);
+        views.setTextViewText(R.id.widgetLeftCharge, chargeText(left, snapshot.leftCharging, partsFresh));
+        views.setTextViewText(R.id.widgetRightCharge, chargeText(right, snapshot.rightCharging, partsFresh));
+        views.setTextViewText(R.id.widgetCaseCharge, chargeText(caseBattery, snapshot.caseCharging, partsFresh));
+        views.setTextColor(R.id.widgetLeftCharge, chargeColor(snapshot.leftCharging, partsFresh));
+        views.setTextColor(R.id.widgetRightCharge, chargeColor(snapshot.rightCharging, partsFresh));
+        views.setTextColor(R.id.widgetCaseCharge, chargeColor(snapshot.caseCharging, partsFresh));
+        views.setTextViewText(R.id.widgetWearState, caseState(snapshot.lidState));
         views.setTextViewText(R.id.widgetStatus, status(snapshot));
 
         PendingIntent openApp = PendingIntent.getActivity(
@@ -139,133 +145,6 @@ final class AirPodsBatteryStore {
         );
         views.setOnClickPendingIntent(R.id.widgetRoot, openApp);
         manager.updateAppWidget(appWidgetId, views);
-    }
-
-    private static Bitmap renderGraphic(Context context, Snapshot snapshot, int leftBattery, int rightBattery, int caseBattery) {
-        float density = context.getResources().getDisplayMetrics().density;
-        int width = Math.round(360 * density);
-        int height = Math.round(116 * density);
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        float scale = density;
-        RectF panel = new RectF(0, 0, width, height);
-        paint.setColor(Color.rgb(18, 24, 29));
-        canvas.drawRoundRect(panel, 14 * scale, 14 * scale, paint);
-
-        float top = 10 * scale;
-        float centerY = 47 * scale;
-        float leftX = width * 0.19f;
-        float caseX = width * 0.50f;
-        float rightX = width * 0.81f;
-
-        boolean partsFresh = isPartsFresh(snapshot, System.currentTimeMillis());
-        drawEarbud(canvas, paint, leftX, centerY, true, leftBattery, partsFresh && snapshot.leftCharging == 1, scale);
-        drawCase(canvas, paint, caseX, centerY + 2 * scale, caseBattery, partsFresh && snapshot.caseCharging == 1, scale);
-        drawEarbud(canvas, paint, rightX, centerY, false, rightBattery, partsFresh && snapshot.rightCharging == 1, scale);
-
-        drawMiniBar(canvas, paint, 18 * scale, height - 32 * scale, width * 0.26f, "L", leftBattery, partsFresh && snapshot.leftCharging == 1, scale);
-        drawMiniBar(canvas, paint, width * 0.37f, height - 32 * scale, width * 0.26f, "R", rightBattery, partsFresh && snapshot.rightCharging == 1, scale);
-        drawMiniBar(canvas, paint, width * 0.70f, height - 32 * scale, width * 0.26f, "Case", caseBattery, partsFresh && snapshot.caseCharging == 1, scale);
-
-        paint.setStyle(Paint.Style.FILL);
-        paint.setTextAlign(Paint.Align.CENTER);
-        paint.setTextSize(9 * scale);
-        paint.setFakeBoldText(false);
-        paint.setColor(Color.rgb(149, 162, 172));
-        canvas.drawText(partsFresh ? compactState(snapshot) : "Battery data is stale", caseX, top + 5 * scale, paint);
-        paint.setFakeBoldText(false);
-        return bitmap;
-    }
-
-    private static void drawEarbud(Canvas canvas, Paint paint, float cx, float cy, boolean left, int battery, boolean charging, float scale) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(239, 244, 247));
-        RectF bud = new RectF(cx - 16 * scale, cy - 28 * scale, cx + 12 * scale, cy);
-        canvas.drawOval(bud, paint);
-        RectF stem = left
-                ? new RectF(cx + 3 * scale, cy - 12 * scale, cx + 12 * scale, cy + 38 * scale)
-                : new RectF(cx - 12 * scale, cy - 12 * scale, cx - 3 * scale, cy + 38 * scale);
-        canvas.drawRoundRect(stem, 6 * scale, 6 * scale, paint);
-
-        paint.setColor(Color.rgb(124, 137, 146));
-        RectF grille = left
-                ? new RectF(cx - 7 * scale, cy - 17 * scale, cx + 4 * scale, cy - 8 * scale)
-                : new RectF(cx - 4 * scale, cy - 17 * scale, cx + 7 * scale, cy - 8 * scale);
-        canvas.drawOval(grille, paint);
-
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(5 * scale);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setColor(Color.rgb(47, 60, 69));
-        RectF arc = new RectF(cx - 27 * scale, cy - 36 * scale, cx + 27 * scale, cy + 18 * scale);
-        canvas.drawArc(arc, 135, 270, false, paint);
-        paint.setColor(batteryColor(battery));
-        float sweep = battery >= 0 ? Math.max(8f, battery * 2.7f) : 42f;
-        canvas.drawArc(arc, 135, sweep, false, paint);
-
-        drawCenteredText(canvas, paint, percentLabel(battery, charging), cx, cy + 56 * scale, batteryColor(battery), 12 * scale, true);
-    }
-
-    private static void drawCase(Canvas canvas, Paint paint, float cx, float cy, int battery, boolean charging, float scale) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(238, 243, 246));
-        RectF caseBody = new RectF(cx - 50 * scale, cy - 25 * scale, cx + 50 * scale, cy + 29 * scale);
-        canvas.drawRoundRect(caseBody, 16 * scale, 16 * scale, paint);
-
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2 * scale);
-        paint.setColor(Color.rgb(180, 190, 197));
-        canvas.drawLine(cx - 43 * scale, cy - 4 * scale, cx + 43 * scale, cy - 4 * scale, paint);
-
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(batteryColor(battery));
-        canvas.drawCircle(cx, cy + 9 * scale, 3.5f * scale, paint);
-
-        RectF tray = new RectF(cx - 36 * scale, cy + 36 * scale, cx + 36 * scale, cy + 46 * scale);
-        paint.setColor(Color.rgb(47, 60, 69));
-        canvas.drawRoundRect(tray, 5 * scale, 5 * scale, paint);
-        if (battery >= 0) {
-            RectF fill = new RectF(tray.left, tray.top, tray.left + tray.width() * battery / 100f, tray.bottom);
-            paint.setColor(batteryColor(battery));
-            canvas.drawRoundRect(fill, 5 * scale, 5 * scale, paint);
-        }
-
-        drawCenteredText(canvas, paint, percentLabel(battery, charging), cx, cy + 63 * scale, batteryColor(battery), 12 * scale, true);
-    }
-
-    private static void drawMiniBar(Canvas canvas, Paint paint, float left, float top, float width, String label, int value, boolean charging, float scale) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setTextAlign(Paint.Align.LEFT);
-        paint.setTextSize(9 * scale);
-        paint.setFakeBoldText(true);
-        paint.setColor(Color.rgb(225, 232, 237));
-        canvas.drawText(label, left, top - 4 * scale, paint);
-
-        RectF track = new RectF(left + 33 * scale, top - 12 * scale, left + width, top - 2 * scale);
-        paint.setColor(Color.rgb(47, 60, 69));
-        canvas.drawRoundRect(track, 5 * scale, 5 * scale, paint);
-        if (value >= 0) {
-            RectF fill = new RectF(track.left, track.top, track.left + track.width() * value / 100f, track.bottom);
-            paint.setColor(batteryColor(value));
-            canvas.drawRoundRect(fill, 5 * scale, 5 * scale, paint);
-        }
-
-        paint.setTextAlign(Paint.Align.RIGHT);
-        paint.setTextSize(9 * scale);
-        paint.setFakeBoldText(false);
-        paint.setColor(Color.rgb(179, 190, 199));
-        canvas.drawText(percentLabel(value, charging), left + width, top + 12 * scale, paint);
-    }
-
-    private static void drawCenteredText(Canvas canvas, Paint paint, String text, float cx, float baseline, int color, float textSize, boolean bold) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setTextAlign(Paint.Align.CENTER);
-        paint.setTextSize(textSize);
-        paint.setFakeBoldText(bold);
-        paint.setColor(color);
-        canvas.drawText(text, cx, baseline, paint);
     }
 
     private static int batteryColor(int value) {
@@ -281,15 +160,8 @@ final class AirPodsBatteryStore {
         return Color.rgb(52, 199, 89);
     }
 
-    private static String percentLabel(int value, boolean charging) {
-        String text = value >= 0 ? value + "%" : "--";
-        return charging && value >= 0 ? text + "+" : text;
-    }
-
-    private static String compactState(Snapshot snapshot) {
-        String lid = snapshot.lidState.startsWith("Unknown") ? "Lid ?" : "Lid " + snapshot.lidState;
-        String mic = snapshot.microphone.startsWith("Unknown") ? "Mic ?" : "Mic " + snapshot.microphone;
-        return lid + "  " + mic;
+    private static int staleBatteryColor(int value) {
+        return value < 0 ? batteryColor(value) : Color.rgb(179, 190, 199);
     }
 
     private static int pendingFlags() {
@@ -300,11 +172,26 @@ final class AirPodsBatteryStore {
         return flags;
     }
 
-    private static String formatPart(String label, int value) {
-        if (value >= 0) {
-            return String.format(Locale.US, "%s %d%%", label, value);
-        }
-        return label + " --";
+    private static String batteryLabel(int value) {
+        return value >= 0 ? value + "%" : "--";
+    }
+
+    private static String chargeText(int value, int charging, boolean fresh) {
+        if (!fresh) return "";
+        if (value < 0) return "Unavailable";
+        if (charging == 1) return "Charging";
+        if (charging == 0) return "Not charging";
+        return "Status unknown";
+    }
+
+    private static int chargeColor(int charging, boolean fresh) {
+        return fresh && charging == 1 ? Color.rgb(52, 199, 89) : Color.rgb(179, 190, 199);
+    }
+
+    private static String caseState(String lidState) {
+        if ("Open".equalsIgnoreCase(lidState)) return "Case is open";
+        if ("Closed".equalsIgnoreCase(lidState)) return "Case is closed";
+        return "Case state unknown";
     }
 
     private static String status(Snapshot snapshot) {
@@ -314,14 +201,14 @@ final class AirPodsBatteryStore {
             String combinedUpdated = snapshot.combinedUpdatedAt > 0
                     ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.combinedUpdatedAt))
                     : "time unknown";
-            return snapshot.combinedSource + " · combined earbuds " + snapshot.combined + "% · " + combinedUpdated
+            return "Combined earbuds " + snapshot.combined + "% · updated " + combinedUpdated
                     + (snapshot.combinedUpdatedAt > 0 && now - snapshot.combinedUpdatedAt > PARTS_FRESH_MILLIS ? " (stale)" : "");
         }
-        String updated = snapshot.updatedAt > 0
-                ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt))
-                : "not yet";
-        return snapshot.source + " · " + updated
-                + (splitData && !isPartsFresh(snapshot, now) ? " (stale)" : "");
+        if (snapshot.updatedAt <= 0) return "Open app to refresh";
+        String updated = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt));
+        return isPartsFresh(snapshot, now)
+                ? "Live · updated " + updated
+                : "Last update " + updated + " · stale";
     }
 
     private static boolean isPartsFresh(Snapshot snapshot, long now) {

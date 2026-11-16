@@ -5,7 +5,7 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="9dp">
 
     <TextView
         android:id="@+id/widgetTitle"
@@ -18,68 +18,163 @@
         android:textSize="15sp"
         android:textStyle="bold" />
 
-    <ImageView
-        android:id="@+id/widgetGraphic"
-        android:layout_width="match_parent"
-        android:layout_height="58dp"
-        android:layout_marginTop="6dp"
-        android:adjustViewBounds="false"
-        android:contentDescription="AirPods battery graphic"
-        android:scaleType="fitCenter" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="6dp"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/widgetLeft"
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_battery_cell"
+            android:gravity="center"
+            android:minHeight="60dp"
+            android:orientation="vertical"
+            android:paddingStart="3dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="3dp"
+            android:paddingBottom="5dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Left"
+                android:textColor="#B3BEC7"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widgetLeftValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#34C759"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widgetLeftCharge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#B3BEC7"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_battery_cell"
+            android:gravity="center"
+            android:minHeight="60dp"
+            android:orientation="vertical"
+            android:paddingStart="3dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="3dp"
+            android:paddingBottom="5dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Right"
+                android:textColor="#B3BEC7"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/widgetRightValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#34C759"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widgetRightCharge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#B3BEC7"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="L --"
-            android:textColor="#34C759"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            android:background="@drawable/widget_battery_cell"
+            android:gravity="center"
+            android:minHeight="60dp"
+            android:orientation="vertical"
+            android:paddingStart="3dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="3dp"
+            android:paddingBottom="5dp">
 
-        <TextView
-            android:id="@+id/widgetRight"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="R --"
-            android:textColor="#34C759"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Case"
+                android:textColor="#B3BEC7"
+                android:textSize="11sp" />
 
-        <TextView
-            android:id="@+id/widgetCase"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.35"
-            android:text="Case --"
-            android:textColor="#34C759"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widgetCaseValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text="--"
+                android:textColor="#34C759"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widgetCaseCharge"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#B3BEC7"
+                android:textSize="9sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
         android:id="@+id/widgetWearState"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
+        android:layout_marginTop="5dp"
         android:ellipsize="end"
         android:maxLines="1"
-        android:text="Ear L ?/R ? · Lid unknown"
+        android:text="Case state unknown"
         android:textColor="#F5F7FA"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 
     <TextView
         android:id="@+id/widgetStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:text="Open app to refresh"
