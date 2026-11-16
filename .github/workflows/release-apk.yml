@@ -108,4 +108,4 @@ jobs:
           artifacts: ${{ env.APK_PATH }}
           allowUpdates: true
           replacesArtifacts: true
-          makeLatest: false
+          makeLatest: true
