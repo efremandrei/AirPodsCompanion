@@ -61,14 +61,14 @@ Reverse-engineering references used for the current BLE feature set:
 The named APK is written to:
 
 ```text
-artifacts/AirPodsCompanion-1.0.29-build30-arm64-v8a-debug.apk
+artifacts/AirPodsCompanion-1.0.30-build31-arm64-v8a-debug.apk
 ```
 
 ## App Identity
 
 - Package: `com.andre.airpodscompanion`
-- Version: `1.0.29`
-- Build: `30`
+- Version: `1.0.30`
+- Build: `31`
 - Developer: Andrei Efremuahkin
 - Email: `andrei.efr@gmail.com`
 - Repo URL used in About: `https://github.com/efremandrei/AirPodsCompanion`

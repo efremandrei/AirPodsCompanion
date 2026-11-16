@@ -27,6 +27,8 @@ final class AirPodsBatteryStore {
     private static final String KEY_RIGHT = "widget_right";
     private static final String KEY_CASE = "widget_case";
     private static final String KEY_COMBINED = "widget_combined";
+    private static final String KEY_COMBINED_UPDATED = "widget_combined_updated";
+    private static final String KEY_COMBINED_SOURCE = "widget_combined_source";
     private static final String KEY_UPDATED = "widget_updated";
     private static final String KEY_SOURCE = "widget_source";
     private static final String KEY_NOTE = "widget_note";
@@ -62,17 +64,18 @@ final class AirPodsBatteryStore {
                 prefs.getInt(KEY_CASE_CHARGING, -1),
                 prefs.getString(KEY_MODEL, "Unknown model"),
                 prefs.getString(KEY_MIC, "Unknown"),
-                prefs.getString(KEY_IN_CASE, "Unknown")
+                prefs.getString(KEY_IN_CASE, "Unknown"),
+                prefs.getLong(KEY_COMBINED_UPDATED, prefs.getLong(KEY_UPDATED, 0L)),
+                prefs.getString(KEY_COMBINED_SOURCE, prefs.getString(KEY_SOURCE, "Battery data"))
         );
     }
 
     static void write(Context context, Snapshot snapshot) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        SharedPreferences.Editor editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_NAME, snapshot.deviceName)
                 .putInt(KEY_LEFT, snapshot.left)
                 .putInt(KEY_RIGHT, snapshot.right)
                 .putInt(KEY_CASE, snapshot.caseBattery)
-                .putInt(KEY_COMBINED, snapshot.combined)
                 .putLong(KEY_UPDATED, snapshot.updatedAt)
                 .putString(KEY_SOURCE, snapshot.source)
                 .putString(KEY_NOTE, snapshot.note)
@@ -84,7 +87,21 @@ final class AirPodsBatteryStore {
                 .putInt(KEY_CASE_CHARGING, snapshot.caseCharging)
                 .putString(KEY_MODEL, snapshot.model)
                 .putString(KEY_MIC, snapshot.microphone)
-                .putString(KEY_IN_CASE, snapshot.inCaseState)
+                .putString(KEY_IN_CASE, snapshot.inCaseState);
+        if (snapshot.combined >= 0) {
+            editor.putInt(KEY_COMBINED, snapshot.combined)
+                    .putLong(KEY_COMBINED_UPDATED, snapshot.combinedUpdatedAt)
+                    .putString(KEY_COMBINED_SOURCE, snapshot.combinedSource);
+        }
+        editor.apply();
+        updateWidgets(context);
+    }
+
+    static void writeCombined(Context context, int level, long updatedAt, String source) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_COMBINED, level)
+                .putLong(KEY_COMBINED_UPDATED, updatedAt)
+                .putString(KEY_COMBINED_SOURCE, source)
                 .apply();
         updateWidgets(context);
     }
@@ -103,9 +120,9 @@ final class AirPodsBatteryStore {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_airpods_battery);
         views.setTextViewText(R.id.widgetTitle, snapshot.modelTitle());
         views.setImageViewBitmap(R.id.widgetGraphic, renderGraphic(context, snapshot));
-        views.setTextViewText(R.id.widgetLeft, formatPart("L", snapshot.left, snapshot.combined));
-        views.setTextViewText(R.id.widgetRight, formatPart("R", snapshot.right, snapshot.combined));
-        views.setTextViewText(R.id.widgetCase, formatPart("Case", snapshot.caseBattery, -1));
+        views.setTextViewText(R.id.widgetLeft, formatPart("L", snapshot.left));
+        views.setTextViewText(R.id.widgetRight, formatPart("R", snapshot.right));
+        views.setTextViewText(R.id.widgetCase, formatPart("Case", snapshot.caseBattery));
         views.setTextViewText(R.id.widgetWearState, snapshot.stateText());
         views.setTextViewText(R.id.widgetStatus, status(snapshot));
 
@@ -138,8 +155,8 @@ final class AirPodsBatteryStore {
         float caseX = width * 0.50f;
         float rightX = width * 0.81f;
 
-        int leftBattery = valueWithFallback(snapshot.left, snapshot.combined);
-        int rightBattery = valueWithFallback(snapshot.right, snapshot.combined);
+        int leftBattery = snapshot.left;
+        int rightBattery = snapshot.right;
 
         drawEarbud(canvas, paint, leftX, centerY, true, leftBattery, snapshot.leftCharging == 1, scale);
         drawCase(canvas, paint, caseX, centerY + 2 * scale, snapshot.caseBattery, snapshot.caseCharging == 1, scale);
@@ -248,13 +265,6 @@ final class AirPodsBatteryStore {
         canvas.drawText(text, cx, baseline, paint);
     }
 
-    private static int valueWithFallback(int value, int fallback) {
-        if (value >= 0) {
-            return value;
-        }
-        return fallback >= 0 ? fallback : -1;
-    }
-
     private static int batteryColor(int value) {
         if (value < 0) {
             return Color.rgb(149, 162, 172);
@@ -287,17 +297,20 @@ final class AirPodsBatteryStore {
         return flags;
     }
 
-    private static String formatPart(String label, int value, int fallback) {
+    private static String formatPart(String label, int value) {
         if (value >= 0) {
             return String.format(Locale.US, "%s %d%%", label, value);
-        }
-        if (fallback >= 0 && ("L".equals(label) || "R".equals(label))) {
-            return String.format(Locale.US, "%s %d%%*", label, fallback);
         }
         return label + " --";
     }
 
     private static String status(Snapshot snapshot) {
+        if (snapshot.left < 0 && snapshot.right < 0 && snapshot.caseBattery < 0 && snapshot.combined >= 0) {
+            String combinedUpdated = snapshot.combinedUpdatedAt > 0
+                    ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.combinedUpdatedAt))
+                    : "time unknown";
+            return snapshot.combinedSource + " · combined earbuds " + snapshot.combined + "% · " + combinedUpdated;
+        }
         String updated = snapshot.updatedAt > 0
                 ? DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt))
                 : "not yet";
@@ -310,6 +323,8 @@ final class AirPodsBatteryStore {
         final int right;
         final int caseBattery;
         final int combined;
+        final long combinedUpdatedAt;
+        final String combinedSource;
         final long updatedAt;
         final String source;
         final String note;
@@ -365,11 +380,39 @@ final class AirPodsBatteryStore {
                 String microphone,
                 String inCaseState
         ) {
+            this(deviceName, left, right, caseBattery, combined, updatedAt, source, note,
+                    leftInEar, rightInEar, lidState, leftCharging, rightCharging, caseCharging,
+                    model, microphone, inCaseState, combined >= 0 ? updatedAt : 0L, source);
+        }
+
+        Snapshot(
+                String deviceName,
+                int left,
+                int right,
+                int caseBattery,
+                int combined,
+                long updatedAt,
+                String source,
+                String note,
+                int leftInEar,
+                int rightInEar,
+                String lidState,
+                int leftCharging,
+                int rightCharging,
+                int caseCharging,
+                String model,
+                String microphone,
+                String inCaseState,
+                long combinedUpdatedAt,
+                String combinedSource
+        ) {
             this.deviceName = deviceName == null || deviceName.trim().isEmpty() ? "AirPods" : deviceName;
             this.left = left;
             this.right = right;
             this.caseBattery = caseBattery;
             this.combined = combined;
+            this.combinedUpdatedAt = combinedUpdatedAt;
+            this.combinedSource = combinedSource == null ? "Battery data" : combinedSource;
             this.updatedAt = updatedAt;
             this.source = source == null ? "Battery data" : source;
             this.note = note == null ? "" : note;
@@ -388,13 +431,13 @@ final class AirPodsBatteryStore {
             String leftText = left >= 0 ? left + "%" : "unknown";
             String rightText = right >= 0 ? right + "%" : "unknown";
             String caseText = caseBattery >= 0 ? caseBattery + "%" : "unknown";
-            if (left < 0 && right < 0 && combined >= 0) {
-                leftText = combined + "%*";
-                rightText = combined + "%*";
-            }
-            return "Left " + leftText + chargeSuffix(leftCharging)
+            String parts = "Left " + leftText + chargeSuffix(leftCharging)
                     + " · Right " + rightText + chargeSuffix(rightCharging)
                     + " · Case " + caseText + chargeSuffix(caseCharging);
+            if (left < 0 && right < 0 && combined >= 0) {
+                return parts + "\nCombined earbuds " + combined + "% (not per earbud)";
+            }
+            return parts;
         }
 
         String stateText() {
@@ -411,7 +454,9 @@ final class AirPodsBatteryStore {
         }
 
         private String chargeSuffix(int charging) {
-            return charging == 1 ? " charging" : "";
+            if (charging == 1) return " charging";
+            if (charging == 0) return " not charging";
+            return "";
         }
 
         private String boolText(int state, String label) {

@@ -83,10 +83,18 @@ public class MainActivity extends Activity {
     private static final String REPO_URL = "https://github.com/efremandrei/AirPodsCompanion";
     private static final int APPLE_COMPANY_ID = 0x004C;
     private static final long AIRPODS_SCAN_MS = 60000L;
+    private static final long AIRPODS_SCAN_RETRY_MS = 5000L;
 
     private final Map<String, Integer> batteryByAddress = new HashMap<>();
+    private final Map<String, Long> batteryUpdatedByAddress = new HashMap<>();
     private final Map<String, Set<Integer>> connectedProfiles = new HashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean activityVisible;
+    private final Runnable batteryScanRetry = () -> {
+        if (activityVisible) {
+            startAirPodsBatteryScanIfPossible();
+        }
+    };
 
     private SharedPreferences preferences;
     private boolean darkMode;
@@ -172,12 +180,12 @@ public class MainActivity extends Activity {
         requestBluetoothConnectIfNeeded();
         bindProfileProxies();
         refreshDevices();
-        startAirPodsBatteryScanIfPossible();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
+        activityVisible = true;
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_BATTERY);
         filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
@@ -189,16 +197,20 @@ public class MainActivity extends Activity {
         } else {
             registerReceiver(bluetoothReceiver, filter);
         }
+        startAirPodsBatteryScanIfPossible();
     }
 
     @Override
     protected void onStop() {
-        super.onStop();
+        activityVisible = false;
+        handler.removeCallbacks(batteryScanRetry);
+        stopAirPodsBatteryScan();
         try {
             unregisterReceiver(bluetoothReceiver);
         } catch (IllegalArgumentException ignored) {
             // Receiver was not registered.
         }
+        super.onStop();
     }
 
     @Override
@@ -435,8 +447,10 @@ public class MainActivity extends Activity {
 
         List<BluetoothDevice> bonded = getBondedDevicesSafely();
         List<BluetoothDevice> airPods = new ArrayList<>();
+        AirPodsBatteryStore.Snapshot knownSnapshot = AirPodsBatteryStore.read(this);
         for (BluetoothDevice device : bonded) {
-            if (isAppleEarbud(deviceName(device))) {
+            String name = deviceName(device);
+            if (isAppleEarbud(name) || isKnownAirPodsName(name, knownSnapshot)) {
                 airPods.add(device);
             }
         }
@@ -476,7 +490,7 @@ public class MainActivity extends Activity {
         profileStatus.setText(profileSummary());
         audioStatus.setText(audioSummary());
         updateWidgetBatterySummary();
-        lastUpdated.setText("Updated " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date()));
+        lastUpdated.setText("Status checked " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date()));
 
         deviceList.removeAllViews();
         if (!permission) {
@@ -511,7 +525,9 @@ public class MainActivity extends Activity {
         status.setPadding(0, dp(5), 0, 0);
         row.addView(status);
 
-        String detail = "Apple earphones/headphones only. Battery may show as unknown unless Android receives a battery event from the device.";
+        String detail = battery.startsWith("Combined battery")
+                ? "Android reports one combined earbuds level here; it is not a separate left, right, or case reading."
+                : "Keep this screen open with the case nearby while AirPods send battery data. Separate BLE readings may be in 10% steps.";
         TextView extra = label(detail, 13, Typeface.NORMAL, muted);
         extra.setPadding(0, dp(6), 0, 0);
         row.addView(extra);
@@ -625,16 +641,40 @@ public class MainActivity extends Activity {
     }
 
     private String batteryText(BluetoothDevice device) {
-        Integer broadcastLevel = batteryByAddress.get(addressSafely(device));
+        String address = addressSafely(device);
+        Integer broadcastLevel = batteryByAddress.get(address);
         if (broadcastLevel != null && broadcastLevel >= 0) {
-            return "Battery " + broadcastLevel + "%";
+            long updatedAt = batteryUpdatedByAddress.getOrDefault(address, 0L);
+            return "Combined battery " + broadcastLevel + "%"
+                    + (updatedAt > 0 && System.currentTimeMillis() - updatedAt > 120000L ? " (stale)" : "");
         }
         int level = readBatteryLevel(device);
         if (level >= 0) {
-            batteryByAddress.put(addressSafely(device), level);
-            return "Battery " + level + "%";
+            batteryByAddress.put(address, level);
+            batteryUpdatedByAddress.put(address, System.currentTimeMillis());
+            return "Combined battery " + level + "%";
         }
-        return "Battery unknown";
+        return "Combined battery unknown";
+    }
+
+    private String batteryFreshnessText(AirPodsBatteryStore.Snapshot snapshot) {
+        long now = System.currentTimeMillis();
+        List<String> lines = new ArrayList<>();
+        if (snapshot.updatedAt > 0
+                && (snapshot.left >= 0 || snapshot.right >= 0 || snapshot.caseBattery >= 0)) {
+            String time = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.updatedAt));
+            lines.add("AirPods per-part data: " + time
+                    + (now - snapshot.updatedAt > 120000L ? " (may be stale)" : ""));
+        }
+        if (snapshot.combined >= 0 && snapshot.combinedUpdatedAt > 0) {
+            String time = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(snapshot.combinedUpdatedAt));
+            lines.add("Combined Android data: " + time
+                    + (now - snapshot.combinedUpdatedAt > 120000L ? " (may be stale)" : ""));
+        }
+        if (lines.isEmpty()) {
+            return "Waiting for AirPods battery data; keep the case nearby and this screen open.";
+        }
+        return TextUtils.join("\n", lines);
     }
 
     private void updateWidgetBatterySummary() {
@@ -645,7 +685,7 @@ public class MainActivity extends Activity {
         widgetBatteryStatus.setText(snapshot.detailText().replace("Left ", "Left earbud: ")
                 .replace(" · Right ", "\nRight earbud: ")
                 .replace(" · Case ", "\nCase: ")
-                .replace(" charging", " (charging)"));
+                + "\n" + batteryFreshnessText(snapshot));
         if (experimentalStatus != null) {
             String wear = snapshot.stateText().replace("Ear ", "")
                     .replace("L in", "Left ear in").replace("L out", "Left ear out").replace("L ?", "Left ear unknown")
@@ -735,15 +775,25 @@ public class MainActivity extends Activity {
         }
         try {
             String name = deviceName(device);
-            batteryByAddress.put(device.getAddress(), level);
             int left = extraBattery(intent, "left");
             int right = extraBattery(intent, "right");
             int caseBattery = extraBattery(intent, "case");
             boolean hasSplit = left >= 0 || right >= 0 || caseBattery >= 0;
             AirPodsBatteryStore.Snapshot previous = AirPodsBatteryStore.read(this);
-            boolean knownAirPodsName = name.equalsIgnoreCase(previous.deviceName)
-                    && previous.source.contains("BLE");
-            if (!isAppleEarbud(name) && !knownAirPodsName && !hasSplit) {
+            boolean knownAirPodsName = isKnownAirPodsName(name, previous);
+            if (!isAppleEarbud(name) && !knownAirPodsName) {
+                return;
+            }
+            if (validBattery(level)) {
+                String address = device.getAddress();
+                batteryByAddress.put(address, level);
+                batteryUpdatedByAddress.put(address, System.currentTimeMillis());
+            }
+            if (!hasSplit) {
+                if (validBattery(level)) {
+                    AirPodsBatteryStore.writeCombined(this, level, System.currentTimeMillis(), "Android Bluetooth");
+                    recordAirPodsSeen("Android combined battery");
+                }
                 return;
             }
             if (left < 0) left = previous.left;
@@ -757,13 +807,18 @@ public class MainActivity extends Activity {
                     validBattery(level) ? level : -1,
                     System.currentTimeMillis(),
                     hasSplit ? "Android battery extras" : "Android combined battery",
-                    hasSplit
-                            ? "Separate Android battery values are shown where provided; existing AirPods readings are retained for omitted parts."
-                            : "Android exposed one combined Bluetooth battery value; it is not a separate reading for each earbud or the case."
+                    "Separate Android values are shown where provided; omitted parts retain their previous readings.",
+                    previous.leftInEar,
+                    previous.rightInEar,
+                    previous.lidState,
+                    previous.leftCharging,
+                    previous.rightCharging,
+                    previous.caseCharging,
+                    previous.model,
+                    previous.microphone,
+                    previous.inCaseState
             ));
-            if (isAppleEarbud(name) || hasSplit) {
-                recordAirPodsSeen("Android battery event");
-            }
+            recordAirPodsSeen("Android battery event");
         } catch (SecurityException ignored) {
             // Permission can be revoked while the app is open.
         }
@@ -825,12 +880,14 @@ public class MainActivity extends Activity {
             @Override
             public void onScanFailed(int errorCode) {
                 airPodsScanActive = false;
+                airPodsScanCallback = null;
                 recordScanDiagnosticMessage("Scan failed: Android BLE scanner error " + errorCode + ".");
                 updateWidgetBatterySummary();
+                scheduleBatteryScanRetry();
             }
         };
         ScanSettings settings = new ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
                 .build();
         try {
             bleScanner.startScan(null, settings, airPodsScanCallback);
@@ -842,6 +899,7 @@ public class MainActivity extends Activity {
             airPodsScanActive = false;
             recordScanDiagnosticMessage("Scan failed: Bluetooth scan permission was rejected at runtime.");
             updateWidgetBatterySummary();
+            scheduleBatteryScanRetry();
         }
     }
 
@@ -863,6 +921,20 @@ public class MainActivity extends Activity {
             recordScanDiagnosticMessage("Scan finished: BLE callbacks arrived, but no Apple manufacturer frames were delivered.");
         }
         updateWidgetBatterySummary();
+        scheduleBatteryScanRetry();
+    }
+
+    private void scheduleBatteryScanRetry() {
+        handler.removeCallbacks(batteryScanRetry);
+        if (activityVisible) {
+            handler.postDelayed(batteryScanRetry, AIRPODS_SCAN_RETRY_MS);
+        }
+    }
+
+    private boolean isKnownAirPodsName(String name, AirPodsBatteryStore.Snapshot snapshot) {
+        return name != null
+                && name.equalsIgnoreCase(snapshot.deviceName)
+                && (snapshot.source.contains("BLE") || snapshot.model.startsWith("AirPods"));
     }
 
     private void handleScanResult(ScanResult result) {
